@@ -1,0 +1,258 @@
+
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title></title>
+  <meta name="author" content="">
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <script src="yaml.js"></script>
+
+  <script>
+
+    var addObs = function(name = "", prob_true=0.5, prob_false="", falsePlaceholder=0.1, checked=true){
+      var table = document.getElementsByTagName("tbody")[0];
+      var tr = document.createElement("tr");
+      var nom = table.getElementsByTagName("tr").length;
+      name = (name == "") ? "placeholder=\"obs " + nom +"\"": "value=\"" + name + "\"";
+      checked = checked ? "checked" : "";
+      var value = "placeholder=" + falsePlaceholder;
+      if(prob_false != ""){
+          value = "value=" + prob_false;
+      }
+      tr.id = "tr" + nom;
+
+      tr.innerHTML = `
+          <td><input ` + name + `"></td>
+          <td></td>
+          <td><input type="number" onChange="updateProbFalse('tr` + nom + `')" value="` + prob_true + `"></td>
+          <td><input type="number" onChange="update();" ` + value + `></td>
+          <td><input type="checkbox" onChange="update();" ` + checked + `></td>
+          <td></td>
+          <td><button onClick="removeObs('tr` + nom +`');">Remove</button></td>
+          `;
+      table.appendChild(tr);
+      update();
+    
+    };
+
+    var removeObs = function(id){
+      var table = document.getElementsByTagName("tbody")[0];
+      table.removeChild(document.getElementById(id));
+      update();
+    };
+
+
+    var calc = function(prior, prob_true, prob_false){
+        console.log("prior = " + prior + ", prob_true = " + prob_true + ", prob_false = "+ prob_false);
+        var num = prob_true * prior;
+        var den = num + prob_false * ( 1 - prior );
+        var prob = num / den;
+        return prob;
+    };
+
+    var updateProbFalse = function(id){
+        var element = document.getElementById(id);
+        var tds = element.getElementsByTagName("td");
+        if(tds[3].firstChild.value == ""){
+          tds[3].firstChild.placeholder = (1 - tds[2].firstChild.value).toFixed(2);
+        }
+        update();
+    }
+
+    var update = function(){
+        console.log("Start application");
+        var start_prior = document.getElementById("prior").value;
+        var hasSetPrior = false;
+
+        var trs = document.getElementsByTagName("tr");
+        for(var i = 1; i < trs.length; i++){
+            var tr = trs[i];
+            var tds = tr.getElementsByTagName("td");
+            if(!tds[4].firstChild.checked){
+                tds[1].innerHTML = "";
+                tds[5].innerHTML = "";
+                continue;
+            }
+            if(i == 1 ||!hasSetPrior){
+                tds[1].innerHTML = start_prior;
+                hasSetPrior = true;
+            }
+            var prob_false = tds[3].firstChild.placeholder;
+            if(tds[3].firstChild.value != ""){
+                prob_false = tds[3].firstChild.value;
+            }
+
+            var prob = calc(tds[1].innerHTML, tds[2].firstChild.value, prob_false);
+            prob = prob.toFixed(2);
+            tds[5].innerHTML = prob;
+            for(var j = i; j < trs.length - 1; j++){
+                if(!trs[j+1].getElementsByTagName("td")[4].firstChild.checked){
+                    continue;
+                }
+                trs[j+1].getElementsByTagName("td")[1].innerHTML = prob;
+            }
+        }
+
+
+        
+    };
+
+    var loadSaveNames = function(){
+      var saves = allSaves();
+      var select = document.getElementById("saves");
+      select.innerHTML = '';
+      for(var i = saves.length - 1; i >= 0; i--){
+          var option = document.createElement("option");
+          option.innerHTML = saves[i]['name'];
+          select.appendChild(option);
+      }
+    };
+  
+    var start = function(){
+      addObs();
+      addObs();
+      addObs();
+      loadSaveNames();
+      update()
+
+    };
+
+    var save = function(){
+      var name = document.getElementById("name").value;
+      if(name == ""){
+        name = window.prompt("Enter sensor name","");
+      }
+      document.getElementById("name").value = name;
+      var prior = document.getElementById("prior").value;
+      var threshold = document.getElementById("threshold").value;
+      var observations = [];
+      var trs = document.getElementsByTagName("tr");
+      for(var i = 1; i < trs.length; i++){
+          var obs = {};
+          var tr = trs[i];
+          var td = tr.getElementsByTagName("td");
+          obs['obsname'] = td[0].firstChild.value;
+          obs['obsnamePlaceHolder'] = td[0].firstChild.placeholder;
+          obs['probTrue'] = td[2].firstChild.value;
+          obs['probFalse'] = td[3].firstChild.value;
+          obs['checked'] = td[4].firstChild.checked;
+          obs['falsePlaceholder'] = td[3].firstChild.placeholder;
+          observations.push(obs);
+      }
+      var sensor = {'observations': observations, 'name': name, 'threshold': threshold,'prior':prior};
+      localStorage.setItem(name, JSON.stringify(sensor));
+      loadSaveNames();
+    };
+
+    var load = function(sensor=""){
+      var name = document.getElementById("saves").value;
+      console.log("Load " + name);
+      var sensor = sensor == "" ? JSON.parse(localStorage.getItem(name)) : sensor;
+      if(!sensor){
+          console.log("No such sensor");
+          return;
+      }
+      //Delete all existing observations
+      var table = document.getElementsByTagName("tbody")[0];
+      var trs = document.getElementsByTagName("tr");
+      for(var i = 1; trs.length > 1; i++){
+          table.removeChild(trs[i]);
+          trs = document.getElementsByTagName("tr");
+          i = 0;
+      }
+
+
+      document.getElementById("prior").value = sensor['prior'];
+      document.getElementById("threshold").value = sensor['threshold'];
+      document.getElementById("name").value = sensor['name'];
+      var observations = sensor['observations'];
+
+      for(var i = 0; i < observations.length; i++){
+          var obs = observations[i];
+          addObs(obs['obsname'], obs['probTrue'], obs['probFalse'], obs['falsePlaceholder'], obs['checked']);
+      }
+  
+      
+    }; 
+
+    var allSaves = function() {
+        var values = [],
+            keys = Object.keys(localStorage),
+            i = keys.length;
+
+        while ( i-- ) {
+            values.push( JSON.parse(localStorage.getItem(keys[i]) ));
+        }
+
+        return values;
+    }
+
+    var parse = function(){
+        var text = document.getElementsByTagName("textarea")[0].value;
+        var sensor = YAML.parse(text);
+        var convertedSensor = {};
+        if("binary_sensor" in sensor){
+            if(sensor['binary_sensor'].length == 1 || 'platform' in sensor['binary_sensor']){
+                var sensor = 'platform' in sensor['binary_sensor'] ? sensor['binary_sensor'] : sensor['binary_sensor'][0];
+                convertedSensor['prior'] = sensor['prior'];
+                convertedSensor['checked'] = "true";
+                convertedSensor['threshold'] = "probability_threshold" in sensor ? sensor['probability_threshold'] : 0.8
+                convertedSensor['name'] = "name" in sensor ? sensor['name'] : "";
+                var observations = [];
+                var obs = sensor['observations'];
+                for(var i = 0; i < obs.length;i++){
+                    var ob = obs[i];
+                    var newOb = {};
+                    newOb['obsname'] = ob['entity_id'];
+                    newOb['probTrue'] = ob['prob_given_true'];
+                    newOb['probFalse'] = 'prob_given_false' in ob ? ob['prob_given_false'] : (1 - newOb['probTrue']).toFixed(2);
+                    observations.push(newOb);
+                }
+                convertedSensor['observations'] = observations;
+                load(convertedSensor);
+            }
+        }
+
+
+
+
+
+    };
+
+  </script>
+</head>
+
+<body onload="start()">
+  <p>Name:</p>
+  <input type="text" id="name">
+  <p>Prior:</p>
+  <input type="number" value="0.1" id="prior">
+  <p>Threshold</p>
+  <input type="number" value="0.7"  id="threshold">
+  <h2>Observations</h2>
+	<table>
+		<tr>
+      <th>name</th>
+      <th>prior</th>
+      <th>prob_true</th>
+      <th>prob_false</th>
+      <th>true?</th>
+      <th>prob</th>
+		</tr>
+
+	</table>
+
+  <button onClick="addObs()">Add Observation</button>
+  <button onClick="save();">Save Sensor</button>
+  <button onClick="load()">Load Sensor</button>
+  <select id="saves"></select>
+  <textarea placeholder="Insert your sensor yaml here"></textarea>
+  <button onClick="parse()">Parse!</button>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+</body>
+
+</html>
